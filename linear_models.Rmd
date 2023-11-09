@@ -139,6 +139,69 @@ anova(fit_null, fit_alternative) |>
 
 ```
 
+# Borough-level differences
+* to add an interaction term
+
+```{r}
+fit = 
+  nyc_airbnb |> 
+  lm(price ~ stars * borough + room_type * borough, data = _)
+
+fit |> 
+  broom::tidy()
+```
+this is kind of a lot; can get the same results but easier to read format by doing the following below
+
+so...instead for exploratory analysis we'll fit a diff linear model for each borough and look at the effect of stars and room type on price
+doesn't tell you stat signif just exploratory
+
+fit a lm to each df; there is one df for each borough
+results gives us just the output of the model we care about
+```{r}
+airbnb_lm = function(df) {
+  lm(price ~ stars + room_type, data = df)
+}
+
+nyc_airbnb |> 
+  nest(df = -borough) |> 
+  mutate(
+    models = map(df, airbnb_lm),
+    results = map(models, broom::tidy)
+  ) |> 
+  select(borough, results) |> 
+  unnest(results) |> 
+  select(borough, term, estimate) |> 
+  pivot_wider(
+    names_from = term,
+    values_from = estimate
+  ) |> 
+  knitr::kable(digits = 2)
+  
+  
+
+```
+
+
+same thing but just a little diff using an anonymous function
+allows you to incorporate the function; don't have to actually write or save the functio separatley
+does not save the function
+```{r}
+nyc_airbnb |> 
+  nest(df = -borough) |> 
+  mutate(
+    models = map(df, \(df) lm(price ~ stars + room_type, data = df)),
+    results = map(models, broom::tidy)
+  ) |> 
+  select(borough, results) |> 
+  unnest(results) |> 
+  select(borough, term, estimate) |> 
+  pivot_wider(
+    names_from = term,
+    values_from = estimate
+  ) |> 
+  knitr::kable(digits = 2)
+```
+
 
 
 
