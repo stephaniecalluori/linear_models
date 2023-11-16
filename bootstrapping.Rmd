@@ -1,0 +1,174 @@
+---
+title: "Bootstrapping"
+output: github_document
+---
+
+# Load packages
+```{r}
+library(tidyverse)
+library(p8105.datasets)
+library(modelr)
+
+set.seed(1)
+
+```
+
+setup
+```{r}
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "right"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+```
+
+## Generate a relevant example
+constant error variance
+then update to make version with nonconstant error variance (errors are no longer normally distributed)
+```{r}
+n_samp = 250
+
+sim_df_const = 
+  tibble(
+    x = rnorm(n_samp, 1, 1),
+    error = rnorm(n_samp, 0, 1),
+    y = 2 + 3 * x + error
+  )
+
+sim_df_nonconst = 
+  sim_df_const |> 
+  mutate(error = error * .75 * x,
+         y = 2+3 * x + error
+         )
+
+sim_df_const |> 
+  ggplot(aes(x = x, y = y)) +
+  geom_point()
+
+sim_df_nonconst |> 
+  ggplot(aes(x = x, y = y)) +
+  geom_point()
+
+```
+
+fit some linear models
+
+```{r}
+sim_df_const |> 
+  lm(y ~ x, data = _) |> 
+  broom::tidy()
+
+sim_df_nonconst |> 
+  lm(y ~ x, data = _) |> 
+  broom::tidy()
+
+
+```
+lm is encoding th assumptions of linear regression it's assuming constant sigma square across the domain but we know that is not the case here bc we have nonconstant variance; so we have to do bootstrapping
+
+## Draw and analyze a bootstrap sample
+
+We can write a bootstrap function
+draw sample of this df of the exact same size of the df; with replacement
+we previously defined sample as 250
+```{r}
+boot_sample = function(df) {
+  sample_frac(df, replace = TRUE)
+}
+```
+
+Let's see how this works
+
+```{r}
+sim_df_nonconst |> 
+  boot_sample() |> 
+  ggplot(aes(x = x, y = y)) +
+  geom_point(alpha = 0.5) +
+  stat_smooth(method = "lm")
+  
+```
+diff in shading bc some points show up more than others; appear multiple times
+keep running this and see diff samples with diff smooth lines
+
+
+### Draw a lot of samples and analyze them
+```{r}
+boot_straps = tibble(strap_number = 1:100) |> 
+  mutate(
+    strap_sample = map(strap_number, \(i) boot_sample(sim_df_nonconst))
+  )
+
+boot_straps |> 
+  pull(strap_sample) |> 
+  nth(1) |> 
+  arrange(x)
+  
+  
+```
+^showing diff bootstrap samples every time
+
+Now do the `lm` fit
+
+```{r}
+boot_results = 
+  boot_straps |> 
+  mutate(
+    models = map(strap_sample, \(df) lm(y~x, data = df)),
+    results = map(models, broom::tidy)) |> 
+  select(strap_number, results) |> 
+  unnest(results)
+```
+
+try to summarize these results, get a bootstrap SE
+```{r}
+boot_results |> 
+  group_by(term) |> 
+  summarize(
+    se = sd(estimate)
+  )
+```
+we see less variability on intercept and more variaiblity on slope
+
+look at the distribution
+```{r}
+boot_results |> 
+  ggplot(aes(x = estimate)) +
+  geom_density() +
+  facet_grid(. ~ term)
+
+boot_results |>
+  filter(term == "x") |> 
+  ggplot(aes(x = estimate)) +
+  geom_density()
+
+
+```
+
+Can I construct a CI
+```{r}
+boot_results |> 
+  group_by(term) |> 
+  summarize(
+    ci_lower = quantile(estimate, 0.025),
+    ci_upper = quantile(estimate, 0.975)
+  )
+```
+
+
+
+
+
+
+
+
+
